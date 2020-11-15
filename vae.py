@@ -1,7 +1,9 @@
 import tensorflow as tf
 import tensorflow_datasets as tfds
 import tensorflow_probability as tfp
+import tensorboard
 import matplotlib.pyplot as plt
+import datetime
 
 tfd = tfp.distributions
 
@@ -45,7 +47,7 @@ class VAE(tf.keras.Model):
       # latent activation
       z = mu + sig * s # TODO: double check that this works as intended, shape checks out though
 
-      return z
+      return mu, log_var, z
 
     def decode(self, z):
       # adopted from world models git
@@ -59,24 +61,62 @@ class VAE(tf.keras.Model):
       return reconstruction
 
     def call(self,x):
-      z = self.encode(x)
+      mu, logvar, z = self.encode(x)
       r = self.decode(z)
 
-      return z, r
+      return mu, logvar, z, r
+
+    def loss(self, x, z, r, logvar, mu):
+      sig = tf.exp(logvar / 2.0)
+
+      # reconstruction loss: sum of squares difference of pixel values
+      ssqr = tf.math.square(x - r)
+      reconstruction_loss = tf.math.reduce_sum(ssqr)
+
+      # KL divergence with normal distribution
+      kl_div = 0.5*tf.square(z) - logvar - (1/(2*sig))*tf.math.square(z-mu)
+      kl_loss = tf.math.reduce_sum(kl_div)
+
+      return reconstruction_loss + kl_loss
 
 
+def train_step(model, optimizer, X):
+  with tf.GradientTape() as tape:
+    mu, logvar, z, r  = model(X)
+    loss = model.loss(X,z,r, logvar, mu)
+  grads = tape.gradient(loss, model.trainable_variables)
+  optimizer.apply_gradients(zip(grads, model.trainable_variables))
+  train_loss(loss)
+  return loss
+
+n_epochs = 1000
+
+# set up logging
+current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
+train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+train_loss = tf.keras.metrics.Mean('train_loss', dtype=tf.float32)
+
+# load data
 train_data, ds_info = tfds.load("lfw", split='train', 
-                                    as_supervised=True, with_info=True, batch_size=100)
+                                    as_supervised=True, with_info=True, batch_size=100, shuffle_files=True)
 
+# model
 
-data = train_data.take(1)
-data = tfds.as_numpy(data)
-data = next(data)
-
-y,X = data[0], data[1]
-X = tf.cast(X, tf.float32) / 255
-X = tf.image.resize(X, (64,64))
-
-
+train_data.repeat(n_epochs)
+train_data.shuffle(buffer_size=1000)
 model = VAE()
-z,r = model(X)
+
+# optimizer
+optimizer = tf.keras.optimizers.SGD()
+
+# training loop
+for epoch in range(n_epochs):
+  epochloss = 0
+  print(f"EPOCH: {epoch}")
+  for y,X in train_data:
+    X = tf.cast(X, tf.float32) / 255
+    X = tf.image.resize(X, (64,64))
+    epochloss += train_step(model, optimizer, X)
+  with train_summary_writer.as_default():
+    tf.summary.scalar('loss', epochloss, step=epoch)
