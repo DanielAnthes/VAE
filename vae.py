@@ -61,7 +61,7 @@ class VAE(tf.keras.Model):
         r = self.decode(z)
         return mu, logvar, z, r
 
-    def loss(self, x, z, r, logvar, mu):
+    def loss(self, x, z, r, logvar, mu, pixel_loss_weight=.5, KL_loss_weight=.5):
       sig = tf.exp(logvar / 2.0)
 
       # reconstruction loss: sum of squares difference of pixel values
@@ -75,13 +75,15 @@ class VAE(tf.keras.Model):
       return reconstruction_loss + kl_loss
 
 
-def train_step(model, optimizer, X):
+def train_step(model, optimizer, X, pixel_weight=.5, KL_weight=.5):
     with tf.GradientTape() as tape:
         mu, logvar, z, r  = model(X)
-        loss = model.loss(X,z,r, logvar, mu)
+        loss, pix, kl = model.loss(X,z,r, logvar, mu, pixel_loss_weight=pixel_weight, KL_loss_weight=KL_weight)
     grads = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(grads, model.trainable_variables))
     train_loss(loss)
+    KL_loss(kl)
+    pixel_loss(pix)
     return loss
 
 
@@ -90,10 +92,16 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
 train_summary_writer = tf.summary.create_file_writer(train_log_dir)
 train_loss = tf.keras.metrics.Mean('train_loss', dtype=tf.float32)
+KL_loss = tf.keras,metrics.Mean('KL_loss', dtype=tf.float32)
+pixel_loss = tf.keras,metrics.Mean('pixel_loss', dtype=tf.float32)
 
-# load data
+### HYPERPARAMETERS ###
+
 BATCHSIZE = 400 
 DATASET_REPS = 100
+KL_LOSS_WEIGHT = 0
+PIXEL_LOSS_WEIGHT = 1
+
 
 (X_train, _), _ = mnist.load_data()
 X_train = tf.cast(X_train, tf.float32) / 255
@@ -106,7 +114,7 @@ n_batch = ceil((n_data/BATCHSIZE)*DATASET_REPS)
 print(f"DATASET SIZE: {n_data}\nBATCHSIZE: {BATCHSIZE}\nDATASET REPS: {DATASET_REPS}")
 
 # model
-model = VAE()
+model = VAE(n_latent=16)
 
 # optimizer
 optimizer = tf.keras.optimizers.SGD(learning_rate=1e-4)
@@ -116,10 +124,12 @@ i = 1
 for X in dataset:
     X = X[:,:,:,None]
     print(f"BATCH: {i}/{n_batch}, NUM IMGS: {X.shape[0]}", end='\r')
-    loss = train_step(model, optimizer, X)
+    loss = train_step(model, optimizer, X, PIXEL_LOSS_WEIGHT, KL_LOSS_WEIGHT)
     i += 1
     with train_summary_writer.as_default():
         tf.summary.scalar('loss', loss, step=i)
+        tf.summary.scalar('KL loss', KL_loss, step=i)
+        tf.summary.scalar('pixel loss', pixel_loss, step=i)
 
 xplot = X_train[:10,:,:].numpy()
 _, _, _, reconst = model(xplot[:,:,:,None]) # add dimension for colour channel
