@@ -1,3 +1,4 @@
+import util
 import tensorflow as tf
 import tensorflow_datasets as tfds
 import tensorflow_probability as tfp
@@ -92,7 +93,7 @@ train_loss = tf.keras.metrics.Mean('train_loss', dtype=tf.float32)
 
 # load data
 BATCHSIZE = 400 
-DATASET_REPS = 10
+DATASET_REPS = 100
 
 (X_train, _), _ = mnist.load_data()
 X_train = tf.cast(X_train, tf.float32) / 255
@@ -119,3 +120,11 @@ for X in dataset:
     i += 1
     with train_summary_writer.as_default():
         tf.summary.scalar('loss', loss, step=i)
+
+xplot = X_train[:10,:,:].numpy()
+_, _, _, reconst = model(xplot[:,:,:,None]) # add dimension for colour channel
+reconst = reconst.numpy().squeeze()
+
+plt.figure()
+util.plot_MNIST_images(xplot, reconst)
+plt.show()
