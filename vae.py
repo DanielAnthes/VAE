@@ -11,12 +11,11 @@ from math import ceil
 tfd = tfp.distributions
 
 class VAE(tf.keras.Model):
-
     def __init__(self, n_latent=8):
         super(VAE, self).__init__()
-        self.conv1 = tf.keras.layers.Conv2D(filters=2, kernel_size=3, strides=3, activation='relu') 
-        self.conv2 = tf.keras.layers.Conv2D(filters=4, kernel_size=3, strides=3, activation='relu')
-        self.conv3 = tf.keras.layers.Conv2D(filters=8, kernel_size=3, strides=1, activation='relu')
+        self.conv1 = tf.keras.layers.Conv2D(filters=8, kernel_size=3, strides=3, activation='relu') 
+        self.conv2 = tf.keras.layers.Conv2D(filters=16, kernel_size=3, strides=3, activation='relu')
+        self.conv3 = tf.keras.layers.Conv2D(filters=32, kernel_size=3, strides=1, activation='relu')
         
         self.N = n_latent
 
@@ -37,7 +36,7 @@ class VAE(tf.keras.Model):
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
-        x = tf.reshape(x, [-1, 8]) # flatten output of convolutions
+        x = tf.reshape(x, [-1, 32]) # flatten output of convolutions
         mu = self.mu_dense(x)
         log_var = self.sig_dense(x)
         sig = tf.exp(log_var / 2.0) # from world models implementation, why is mu encoded directly and var assumed to be logit output?
@@ -69,10 +68,11 @@ class VAE(tf.keras.Model):
       reconstruction_loss = tf.math.reduce_sum(ssqr)
 
       # KL divergence with normal distribution
-      kl_div = 0.5*tf.square(z) - logvar - (1/(2*sig))*tf.math.square(z-mu)
+      # kl_div = 0.5*tf.square(z) - logvar - (1/(2*sig))*tf.math.square(z-mu)
+      kl_div = 0.5*(tf.exp(logvar) + mu**2 - 1 - logvar)
       kl_loss = tf.math.reduce_sum(kl_div)
 
-      return reconstruction_loss + kl_loss
+      return reconstruction_loss + kl_loss, reconstruction_loss, kl_loss
 
 
 def train_step(model, optimizer, X, pixel_weight=.5, KL_weight=.5):
@@ -81,26 +81,21 @@ def train_step(model, optimizer, X, pixel_weight=.5, KL_weight=.5):
         loss, pix, kl = model.loss(X,z,r, logvar, mu, pixel_loss_weight=pixel_weight, KL_loss_weight=KL_weight)
     grads = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(grads, model.trainable_variables))
-    train_loss(loss)
-    KL_loss(kl)
-    pixel_loss(pix)
-    return loss
+    return loss, pix, kl
 
 
 # set up logging
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
 train_summary_writer = tf.summary.create_file_writer(train_log_dir)
-train_loss = tf.keras.metrics.Mean('train_loss', dtype=tf.float32)
-KL_loss = tf.keras,metrics.Mean('KL_loss', dtype=tf.float32)
-pixel_loss = tf.keras,metrics.Mean('pixel_loss', dtype=tf.float32)
+train_summary_writer.set_as_default()
 
 ### HYPERPARAMETERS ###
 
 BATCHSIZE = 400 
-DATASET_REPS = 100
-KL_LOSS_WEIGHT = 0
-PIXEL_LOSS_WEIGHT = 1
+DATASET_REPS = 400
+KL_LOSS_WEIGHT = .5
+PIXEL_LOSS_WEIGHT = .5
 
 
 (X_train, _), _ = mnist.load_data()
@@ -117,23 +112,26 @@ print(f"DATASET SIZE: {n_data}\nBATCHSIZE: {BATCHSIZE}\nDATASET REPS: {DATASET_R
 model = VAE(n_latent=16)
 
 # optimizer
-optimizer = tf.keras.optimizers.SGD(learning_rate=1e-4)
+# optimizer = tf.keras.optimizers.SGD(learning_rate=1e-4)
+optimizer = tf.keras.optimizers.Adam()
 
 # training loop
 i = 1
 for X in dataset:
     X = X[:,:,:,None]
     print(f"BATCH: {i}/{n_batch}, NUM IMGS: {X.shape[0]}", end='\r')
-    loss = train_step(model, optimizer, X, PIXEL_LOSS_WEIGHT, KL_LOSS_WEIGHT)
+    loss, pix, kl = train_step(model, optimizer, X, PIXEL_LOSS_WEIGHT, KL_LOSS_WEIGHT)
     i += 1
     with train_summary_writer.as_default():
         tf.summary.scalar('loss', loss, step=i)
-        tf.summary.scalar('KL loss', KL_loss, step=i)
-        tf.summary.scalar('pixel loss', pixel_loss, step=i)
+        tf.summary.scalar('KL loss', kl, step=i)
+        tf.summary.scalar('pixel loss', pix, step=i)
 
 xplot = X_train[:10,:,:].numpy()
 _, _, _, reconst = model(xplot[:,:,:,None]) # add dimension for colour channel
 reconst = reconst.numpy().squeeze()
+
+model.save_weights("./mnist_vae")
 
 plt.figure()
 util.plot_MNIST_images(xplot, reconst)
