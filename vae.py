@@ -67,5 +67,7 @@ class VAE(tf.keras.Model):
 
       return reconstruction_loss + kl_loss, reconstruction_loss, kl_loss
 
+    def load(self, name="mnist_vae"):
+      self.load_weights(name)
 
 
