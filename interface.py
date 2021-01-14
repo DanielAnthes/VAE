@@ -10,6 +10,8 @@ class Interface:
     def __init__(self):
 
         self.n_latent = 16
+        
+        self.update = True
 
         self.root = tk.Tk()
         self.root.geometry("800x1200")
@@ -43,20 +45,24 @@ class Interface:
 
 
     def update_image(self):
-        img = self.model.decode(self.latent_activations)
-        img = img.numpy().squeeze()
-        self.imax.imshow(img)
-        self.imfig.canvas.draw()
+        if self.update:
+            img = self.model.decode(self.latent_activations)
+            img = img.numpy().squeeze()
+            self.imax.imshow(img)
+            self.imfig.canvas.draw()
 
     def randomize(self):
         self.latent_activations = np.random.random((1,16))
+        self.update = False
         for i in range(self.n_latent):
             self.sliders[i].set(self.latent_activations[0,i])
+        self.update = True
         self.update_image()
 
     def update_latent(self, _):
-        for i in range(self.n_latent):
-            self.latent_activations[0,i] = self.sliders[i].get()
-        self.update_image()
+        if self.update:
+            for i in range(self.n_latent):
+                self.latent_activations[0,i] = self.sliders[i].get()
+            self.update_image()
 
 inter = Interface()
