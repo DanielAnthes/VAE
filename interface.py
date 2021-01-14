@@ -8,14 +8,17 @@ from vae import VAE
 class Interface:
 
     def __init__(self):
+
+        self.n_latent = 16
+
         self.root = tk.Tk()
-        self.root.geometry("1000x1000")
+        self.root.geometry("800x1200")
 
         self.model = VAE(n_latent=16)
         self.model.load()
 
-        latent_activations = np.random.random((1,16))
-        img = self.model.decode(latent_activations)
+        self.latent_activations = np.zeros((1,16))
+        img = self.model.decode(self.latent_activations)
 
         self.imfig = plt.figure()
         self.imax = self.imfig.add_subplot(111)
@@ -26,14 +29,34 @@ class Interface:
         canvas.draw()
         canvas.get_tk_widget().pack()
 
-        btn = tk.Button(master=self.root, text="randomize", command=lambda: self.update_image(self.model.decode(np.random.random((1,16))).numpy().squeeze()))
+        btn = tk.Button(master=self.root, text="randomize", command=self.randomize)
         btn.pack()
 
+        self.sliders = list()
+        for i in range(self.n_latent):
+            slider = tk.Scale(master = self.root, command=self.update_latent, from_=-2, to=2, orient=tk.HORIZONTAL, resolution=0.01, length=500)
+            slider.pack()
+            self.sliders.append(slider)
+
+        self.randomize()
         self.root.mainloop()
 
 
-    def update_image(self, data):
-        self.imax.imshow(data)
+    def update_image(self):
+        img = self.model.decode(self.latent_activations)
+        img = img.numpy().squeeze()
+        self.imax.imshow(img)
         self.imfig.canvas.draw()
+
+    def randomize(self):
+        self.latent_activations = np.random.random((1,16))
+        for i in range(self.n_latent):
+            self.sliders[i].set(self.latent_activations[0,i])
+        self.update_image()
+
+    def update_latent(self, _):
+        for i in range(self.n_latent):
+            self.latent_activations[0,i] = self.sliders[i].get()
+        self.update_image()
 
 inter = Interface()
