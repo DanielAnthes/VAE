@@ -20,9 +20,9 @@ train_summary_writer.set_as_default()
 ### HYPERPARAMETERS ###
 
 BATCHSIZE = 400 
-DATASET_REPS = 400
-KL_LOSS_WEIGHT = .5
-PIXEL_LOSS_WEIGHT = .5
+DATASET_REPS = 100
+KL_LOSS_WEIGHT = .05
+PIXEL_LOSS_WEIGHT = .95
 
 ### DATA ###
 
@@ -38,10 +38,9 @@ print(f"DATASET SIZE: {n_data}\nBATCHSIZE: {BATCHSIZE}\nDATASET REPS: {DATASET_R
 
 ### MODEL ###
 
-model = VAE(n_latent=16)
+model = VAE(n_latent=6)
 
 # optimizer
-# optimizer = tf.keras.optimizers.SGD(learning_rate=1e-4)
 optimizer = tf.keras.optimizers.Adam()
 
 ### TRAINING ###
@@ -49,7 +48,7 @@ optimizer = tf.keras.optimizers.Adam()
 def train_step(model, optimizer, X):
     with tf.GradientTape() as tape:
         mu, logvar, z, r  = model(X)
-        loss = model.loss(X,z,r, logvar, mu)
+        loss = model.loss(X,z,r, logvar, mu, pixel_loss_weight=PIXEL_LOSS_WEIGHT, KL_loss_weight=KL_LOSS_WEIGHT)
     grads = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(grads, model.trainable_variables))
     return loss
@@ -60,7 +59,7 @@ i = 1
 for X in dataset:
     X = X[:,:,:,None]
     print(f"BATCH: {i}/{n_batch}, NUM IMGS: {X.shape[0]}", end='\r')
-    loss, pix, kl = train_step(model, optimizer, X, PIXEL_LOSS_WEIGHT, KL_LOSS_WEIGHT)
+    loss, pix, kl = train_step(model, optimizer, X)
     i += 1
     with train_summary_writer.as_default():
         tf.summary.scalar('loss', loss, step=i)
@@ -71,7 +70,7 @@ xplot = X_train[:10,:,:].numpy()
 _, _, _, reconst = model(xplot[:,:,:,None]) # add dimension for colour channel
 reconst = reconst.numpy().squeeze()
 
-model.save_weights("./mnist_vae" + current_time)
+model.save_weights("./mnist_vae_6d" + current_time)
 
 plt.figure()
 util.plot_MNIST_images(xplot, reconst)

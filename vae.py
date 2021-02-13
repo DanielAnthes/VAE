@@ -4,7 +4,7 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 
 class VAE(tf.keras.Model):
-    def __init__(self, n_latent=8):
+    def __init__(self, n_latent=2):
         super(VAE, self).__init__()
         self.conv1 = tf.keras.layers.Conv2D(filters=8, kernel_size=3, strides=3, activation='relu') 
         self.conv2 = tf.keras.layers.Conv2D(filters=16, kernel_size=3, strides=3, activation='relu')
@@ -53,7 +53,7 @@ class VAE(tf.keras.Model):
         r = self.decode(z)
         return mu, logvar, z, r
 
-    def loss(self, x, z, r, logvar, mu, pixel_loss_weight=.5, KL_loss_weight=.5):
+    def loss(self, x, z, r, logvar, mu, pixel_loss_weight=.9, KL_loss_weight=.1):
       sig = tf.exp(logvar / 2.0)
 
       # reconstruction loss: sum of squares difference of pixel values

@@ -1,0 +1,2 @@
+model_checkpoint_path: "mnist_vae_6d20210212-123203"
+all_model_checkpoint_paths: "mnist_vae_6d20210212-123203"
